@@ -1,3 +1,5 @@
+// [file name]: save_manager.dart (محدث)
+// [file content begin]
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -5,23 +7,27 @@ import 'package:myapp/utils/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/team.dart';
 import '../models/race_result.dart';
+import '../models/championship.dart'; // جديد
 
 class SaveManager with ChangeNotifier {
   static const String _teamKey = 'player_team';
   static const String _resultsKey = 'race_results';
   static const String _seasonKey = 'current_season';
   static const String _raceKey = 'current_race';
+  static const String _championshipKey = 'championship'; // جديد
 
   Team? _playerTeam;
   List<RaceResult> _raceResults = [];
   int _currentSeason = 1;
   int _currentRace = 1;
   late int _seasonYear = DateTime.now().year;
+  Championship? _currentChampionship; // جديد
 
   Team? get playerTeam => _playerTeam;
   List<RaceResult> get raceResults => _raceResults;
   int get currentSeason => _currentSeason;
   int get currentRace => _currentRace;
+  Championship? get currentChampionship => _currentChampionship; // جديد
 
   bool get hasSavedGame => _playerTeam != null;
 
@@ -33,6 +39,10 @@ class SaveManager with ChangeNotifier {
     _playerTeam = team;
     _currentRace = 1;
     _raceResults.clear();
+    _currentChampionship = Championship( // جديد
+      season: _currentSeason,
+      startDate: DateTime.now(),
+    );
     notifyListeners();
   }
 
@@ -52,6 +62,11 @@ class SaveManager with ChangeNotifier {
             .toList();
       }
 
+      final championshipJson = prefs.getString(_championshipKey); // جديد
+      if (championshipJson != null) {
+        _currentChampionship = Championship.fromJson(json.decode(championshipJson));
+      }
+
       _currentSeason = prefs.getInt(_seasonKey) ?? 1;
       _currentRace = prefs.getInt(_raceKey) ?? 1;
 
@@ -65,17 +80,27 @@ class SaveManager with ChangeNotifier {
     }
   }
 
-  void completeRace(RaceResult result) {
+  // في save_manager.dart - تأكد من وجود هذه الدالة
+void completeRace(RaceResult result, List<Team> allTeams) {
   _raceResults.add(result);
-  _currentRace++; // الانتقال للسباق التالي
+  _currentRace++;
   
-  // إذا انتهى الموسم، ابدأ موسماً جديداً
+  // تحديث البطولة مع جميع الفرق الحقيقية
+  if (_currentChampionship != null) {
+    _currentChampionship!.updateStandings(result, allTeams);
+  }
+
   if (_currentRace > AppConstants.racesPerSeason) {
     _currentSeason++;
-    _currentRace = 1; // ✅ إعادة الضبط لبداية الموسم الجديد
+    _currentRace = 1;
     _raceResults.clear();
+    // إنشاء بطولة جديدة للموسم الجديد
+    _currentChampionship = Championship(
+      season: _currentSeason,
+      startDate: DateTime.now(),
+    );
   }
-  
+
   saveGame(team: _playerTeam!);
 }
 
@@ -83,16 +108,6 @@ class SaveManager with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
 
     _playerTeam = team;
-    if (newResult != null) {
-      _raceResults.add(newResult);
-    }
-
-    if (_currentRace < 10) {
-      _currentRace++;
-    } else {
-      _currentRace = 1;
-      _seasonYear++;
-    }
 
     await prefs.setString(_teamKey, json.encode(team.toJson()));
     await prefs.setStringList(
@@ -102,6 +117,12 @@ class SaveManager with ChangeNotifier {
           .map((result) => json.encode(result.toJson()))
           .toList(),
     );
+    
+    // حفظ البطولة
+    if (_currentChampionship != null) {
+      await prefs.setString(_championshipKey, json.encode(_currentChampionship!.toJson()));
+    }
+
     await prefs.setInt(_seasonKey, _currentSeason);
     await prefs.setInt(_raceKey, _currentRace);
 
@@ -109,12 +130,17 @@ class SaveManager with ChangeNotifier {
   }
 
   Future<void> newGame(Team team) async {
-   _playerTeam = team;
-  _currentSeason = 1;
-  _currentRace = 1; // ✅ يجب أن يبدأ من 1
-  _raceResults.clear();
+    _playerTeam = team;
+    _currentSeason = 1;
+    _currentRace = 1;
+    _raceResults.clear();
+    _currentChampionship = Championship( // جديد
+      season: _currentSeason,
+      startDate: DateTime.now(),
+    );
 
     await saveGame(team: team);
     notifyListeners();
   }
 }
+// [file content end]
